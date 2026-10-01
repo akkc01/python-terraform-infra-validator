@@ -1,0 +1,124 @@
+parameters:
+
+- name: jobName
+  type: string
+  default: security_scanning
+
+- name: displayName
+  type: string
+  default: "Infra Security Scanning"
+
+- name: workingDirectory
+  type: string
+
+
+jobs:
+- job: ${{ parameters.jobName }}
+  displayName: ${{ parameters.displayName }}
+  steps:
+  - checkout: self
+    displayName: "Checkout Repository"
+
+
+  - task: Bash@3
+    displayName: "TruffleHog Secret Scan"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -e
+
+        echo "TruffleHog version:"
+        trufflehog --version
+
+        echo "Running TruffleHog scan..."
+
+        trufflehog git \
+          "file://$(Build.SourcesDirectory)" \
+          --results=verified,unknown \
+          --fail
+
+
+  - task: Bash@3
+    displayName: "Install tfsec"
+    inputs:
+      targetType: inline
+      script: |
+        set -e
+
+        TFSEC_VERSION="v1.26.0"
+        TFSEC_PATH="$(Agent.TempDirectory)/tfsec"
+
+        echo "Downloading tfsec ${TFSEC_VERSION}..."
+
+        curl -L \
+          --fail \
+          --connect-timeout 15 \
+          --max-time 300 \
+          -o "$TFSEC_PATH" \
+          "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-darwin-amd64"
+
+        chmod +x "$TFSEC_PATH"
+
+        echo ""
+        echo "tfsec binary:"
+        file "$TFSEC_PATH"
+
+        echo ""
+        echo "tfsec version:"
+        "$TFSEC_PATH" --version
+
+  - task: Bash@3
+    displayName: "tfsec Scan"
+    inputs:
+      targetType: inline
+      script: |
+        set -e
+
+        "$(Agent.TempDirectory)/tfsec" \
+          "${{ parameters.workingDirectory }}"
+
+  - script: |
+      set -e
+      echo "Installing TFLint..."
+      brew install tflint
+      cd "${{ parameters.workingDirectory }}"
+      echo "Initializing TFLint..."
+      tflint --init
+      echo "Running TFLint..."
+      tflint --format compact
+    displayName: "Terraform Lint"
+
+
+  # - script: |
+  #     /opt/homebrew/bin/checkov \
+  #     -d "${{ parameters.workingDirectory }}" \
+  #     --framework terraform
+  #   displayName: "Checkov Terraform Security Scan"
+
+
+  # - script: |
+  #     echo "Checkov version:"
+  #     /opt/homebrew/bin/checkov --version
+  #     mkdir -p "$(Build.ArtifactStagingDirectory)/checkov"
+  #     /opt/homebrew/bin/checkov \
+  #     -d "${{ parameters.workingDirectory }}" \
+  #     --framework terraform \
+  #     --output cli \
+  #     --output junitxml \
+  #     --output-file-path console,$(Build.ArtifactStagingDirectory)/checkov/checkov.xml
+  #   displayName: "Run Checkov"
+
+  # - task: PublishTestResults@2
+  #   displayName: "Publish Checkov Test Results"
+  #   condition: always()
+  #   inputs:
+  #     testResultsFormat: "JUnit"
+  #     testResultsFiles: "$(Build.ArtifactStagingDirectory)/checkov/checkov.xml"
+  #     testRunTitle: "Checkov Terraform Security Scan"
+
+  # - task: PublishPipelineArtifact@1
+  #   displayName: "Publish Checkov Report"
+  #   condition: always()
+  #   inputs:
+  #     targetPath: "$(Build.ArtifactStagingDirectory)/checkov"
+  #     artifact: "checkov-report"

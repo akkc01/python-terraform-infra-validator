@@ -1,0 +1,5 @@
+azure-identity
+azure-mgmt-containerregistry
+azure-mgmt-containerservice
+azure-mgmt-authorization
+kubernetes

@@ -1,0 +1,132 @@
+name: AKS-Infra-Pipeline
+
+trigger: none
+  # branches:
+  #   include:
+  #     - main
+
+parameters:
+- name: environment
+  type: string
+  default: dev
+  values:
+    - dev
+    - prod
+    - qa
+
+
+# # Refering from Same Organization + Different Project + Different Repo:
+resources:
+  repositories:
+    - repository: securityScan                 # used by this name in Pipeline
+      type: git
+#      name: your_ADO_Project/your_repo          # PROJECT_NAME/REPOSITORY_NAME
+      name: CMMI-TEST-PROJECT/CMMI-TEST-PROJECT
+      ref: refs/heads/main
+
+    - repository: tf_plan   # used by this name in Pipeline
+      type: git
+      name: axion-db           # Repository name
+      ref: refs/heads/main
+
+
+pool: dev-aks-akkc-agent
+
+
+variables:
+  # variable group is used to fetch backend secrets
+  - group: tf_backend_vg
+  # VG is used to pass the sub id to the .tfvars file. VG= variables group
+  - group: subscription_vg
+
+  # this condition is used to change the value of sub_id as per the parameter(like dev,qa,prod). 
+  - ${{ if eq(parameters.environment, 'dev') }}:
+      - name: sub_id
+        value: $(dev_sub_id)
+
+  - ${{ if eq(parameters.environment, 'qa') }}:
+      - name: sub_id
+        value: $(qa_sub_id)
+
+  - ${{ if eq(parameters.environment, 'prod') }}:
+      - name: sub_id
+        value: $(prod_sub_id)
+
+  # terraform statefile variables as per env, it will change as per parameter value.
+  - name: statefile
+    value: "axion-${{ parameters.environment }}.infra.tfstate"
+
+  # we can not pass the service-connection value via VG
+  - name: service-connection
+    value: "axion-aks-app"
+
+  # workig directory as per env
+  - name: workdir
+    value: '$(System.DefaultWorkingDirectory)/environment/${{ parameters.environment }}'
+
+
+
+stages:
+- stage: tf_init_validate
+  displayName: "Initialize and Validate"
+  jobs:
+
+  - template: templates/jobs/terraform_init_validate_fmt.yaml
+  # jobs level templates for init validate & fmt from same repo
+    parameters:
+      jobName: terraform_init_validate_fmt
+      displayName: "Init Validate and Format"
+      workingDirectory: '$(workdir)'
+      serviceConnection: '$(service-connection)'
+      backendResourceGroup: '$(resource-group)'
+      backendStorageAccount: '$(storage-account)'
+      backendContainer: '$(blob-container)'
+      backendStateFile: '$(statefile)'
+
+- stage: infra_scanning
+  dependsOn: tf_init_validate
+  displayName: "Security Scanning"
+  jobs:
+  - template: templates/jobs/terraform-security-scan.yml@securityScan
+    # Refering this template from Diff project
+    parameters:
+      jobName: security_scanning
+      displayName: "Scanning Infrastructure Security"
+      workingDirectory: '$(System.DefaultWorkingDirectory)'
+
+
+- stage: terraform_plan
+  dependsOn: infra_scanning
+  displayName: "Terraform Plan"
+  jobs:
+  - template: templates/jobs/terraform_plan.yaml@tf_plan
+    # Refering this template from Diff Repo
+    parameters:
+      jobName: terraform_plan
+      displayName: "Planning Infrastructure"
+      workingDirectory: '$(workdir)'
+      serviceConnection: '$(service-connection)'
+      backendResourceGroup: '$(resource-group)'
+      backendStorageAccount: '$(storage-account)'
+      backendContainer: '$(blob-container)'
+      backendStateFile: '$(statefile)'
+
+
+- stage: terraform_apply
+  dependsOn: terraform_plan
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  displayName: "Terraform Apply"
+  jobs:
+  - template: templates/jobs/terraform_apply.yaml
+    parameters:
+      environment: ${{ parameters.environment }}
+      deploymentName: "terraform_apply"
+      displayName: "Provisoning Infrastucture"
+      workingDirectory: '$(workdir)'
+      serviceConnection: '$(service-connection)'
+      backendResourceGroup: '$(resource-group)'
+      backendStorageAccount: '$(storage-account)'
+      backendContainer: '$(blob-container)'
+      backendStateFile: '$(statefile)'
+ 
+

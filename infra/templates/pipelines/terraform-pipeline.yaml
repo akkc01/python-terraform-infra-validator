@@ -1,0 +1,121 @@
+parameters:
+
+- name: jobName
+  type: string
+  default: terraform_plan
+
+- name: displayName
+  type: string
+  default: "Terraform Init and Plan"
+
+- name: poolName
+  type: string
+  default: "dev-aks-akkc-agent"
+
+- name: environment
+  type: string
+
+- name: workingDirectory
+  type: string
+
+- name: planFile
+  type: string
+
+- name: serviceConnection
+  type: string
+
+- name: backendResourceGroup
+  type: string
+
+- name: backendStorageAccount
+  type: string
+
+- name: backendContainer
+  type: string
+
+- name: backendStateFile
+  type: string
+
+
+# # Refering from Same Organization + Different Project + Different Repo:
+resources:
+  repositories:
+    - repository: securityScan                 # used by this name in Pipeline
+      type: git
+#      name: your_ADO_Project/your_repo          # PROJECT_NAME/REPOSITORY_NAME
+      name: CMMI-TEST-PROJECT/CMMI-TEST-PROJECT
+      ref: refs/heads/main
+
+    - repository: tf_plan   # used by this name in Pipeline
+      type: git
+      name: axion-db           # Repository name
+      ref: refs/heads/main
+
+
+stages:
+
+- stage: tf_init_validate
+  displayName: "Initialize and Validate"
+  jobs:
+  - template: ../extends-job-for-pipeline/terraform_init_validate_fmt.yaml
+    parameters:
+      jobName: terraform_init_validate_fmt
+      displayName: "Terraform Init"
+      poolName: ${{ parameters.poolName }}
+      workingDirectory: '${{ parameters.workingDirectory }}'
+      serviceConnection: '${{ parameters.serviceConnection}}'
+      backendResourceGroup: '${{ parameters.backendResourceGroup }}'
+      backendStorageAccount: '${{ parameters.backendStorageAccount }}'
+      backendContainer: '${{ parameters.backendContainer }}'
+      backendStateFile: '${{ parameters.backendStateFile }}'
+
+
+- stage: infra_scanning
+  dependsOn: tf_init_validate
+  displayName: "Security Scanning"
+  jobs:
+  - template: templates/jobs/extends-terraform-security-scan.yml@securityScan 
+    parameters:
+      jobName: security_scanning
+      displayName: "Scanning Infrastructure Security"
+      poolName: ${{ parameters.poolName }}
+      workingDirectory: '$(System.DefaultWorkingDirectory)'
+
+
+
+- stage: terraform_plan
+  dependsOn: infra_scanning
+  displayName: "Terraform Plan"
+  jobs:
+  - template: templates/jobs/extends_terraform_plan.yaml@tf_plan
+    parameters:
+      jobName: terraform_plan
+      displayName: "Planning Infrastructure"
+      poolName: ${{ parameters.poolName }}
+      workingDirectory: '${{ parameters.workingDirectory }}'
+      serviceConnection: '${{ parameters.serviceConnection}}'
+      backendResourceGroup: '${{ parameters.backendResourceGroup }}'
+      backendStorageAccount: '${{ parameters.backendStorageAccount }}'
+      backendContainer: '${{ parameters.backendContainer }}'
+      backendStateFile: '${{ parameters.backendStateFile }}'
+
+
+- stage: terraform_apply
+  displayName: "Terraform Apply"
+  jobs:
+
+  - template: ../extends-job-for-pipeline/terraform_apply.yaml
+    parameters:
+      environment: ${{ parameters.environment }}
+      deploymentName: terraform_apply
+      displayName: "Provisioning Infrastructure"
+      poolName: ${{ parameters.poolName }}
+      workingDirectory: '${{ parameters.workingDirectory }}'
+      serviceConnection: '${{ parameters.serviceConnection}}'
+      backendResourceGroup: '${{ parameters.backendResourceGroup }}'
+      backendStorageAccount: '${{ parameters.backendStorageAccount }}'
+      backendContainer: '${{ parameters.backendContainer }}'
+      backendStateFile: '${{ parameters.backendStateFile }}'
+      planFile: '${{ parameters.planFile }}'
+
+

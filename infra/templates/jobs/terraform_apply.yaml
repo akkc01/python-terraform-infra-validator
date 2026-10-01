@@ -1,0 +1,74 @@
+parameters:
+
+- name: environment
+  type: string
+
+- name: deploymentName
+  type: string
+  default: terraform_apply
+
+- name: displayName
+  type: string
+  default: "Terraform Init and Apply"
+
+- name: workingDirectory
+  type: string
+
+- name: serviceConnection
+  type: string
+
+- name: backendResourceGroup
+  type: string
+
+- name: backendStorageAccount
+  type: string
+
+- name: backendContainer
+  type: string
+
+- name: backendStateFile
+  type: string
+
+
+jobs:
+- deployment: ${{ parameters.deploymentName }}
+  displayName: ${{ parameters.displayName }}
+  # Azure DevOps Environment
+  # This is where QA/Prod approvals can be configured
+  environment: ${{ parameters.environment }}
+  strategy:
+    runOnce:
+      deploy:
+        steps:
+        - checkout: self
+          displayName: "Checkout Repository"
+
+        - task: DownloadPipelineArtifact@2
+          displayName: "Download Terraform Plan"
+          inputs:
+            buildType: 'current'
+            artifactName: 'terraform-plan'
+            targetPath: '${{ parameters.workingDirectory }}'
+
+        - task: TerraformTask@5
+          displayName: "Terraform Init"
+          inputs:
+            provider: 'azurerm'
+            command: 'init'
+            workingDirectory: ${{ parameters.workingDirectory }}
+            backendServiceArm: ${{ parameters.serviceConnection }}
+            backendAzureRmResourceGroupName: ${{ parameters.backendResourceGroup }}
+            backendAzureRmStorageAccountName: ${{ parameters.backendStorageAccount }}
+            backendAzureRmContainerName: ${{ parameters.backendContainer }}
+            backendAzureRmKey: ${{ parameters.backendStateFile }}
+
+        - task: TerraformTask@5
+          displayName: "Terraform Apply"
+          inputs:
+            provider: 'azurerm'
+            command: 'apply'
+            workingDirectory: '${{ parameters.workingDirectory }}'
+            commandOptions: '${{ parameters.backendStateFile }}.tfplan'
+            environmentServiceNameAzureRM: '${{ parameters.serviceConnection }}'
+          env:
+            TF_VAR_subscription_id: $(sub_id)

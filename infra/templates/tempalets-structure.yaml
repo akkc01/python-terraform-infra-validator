@@ -1,0 +1,33 @@
+
+# # Refering from Same Organization + Same Project + Same Repo | No repository resource required:
+#   - template: templates/jobs/terraform-security-scan.yml
+
+
+# # Refering from Same Organization + Same Project + Different Repo:
+# resources:
+#   repositories:
+#     - repository: cmmiTemplates01   # used by this name in Pipeline
+#       type: git
+#       name: axion-app-ado           # Repository name
+#       ref: refs/heads/main
+
+
+# # # Refering from Same Organization + Different Project + Different Repo:
+# resources:
+#   repositories:
+#     - repository: securityScan                 # used by this name in Pipeline
+#       type: git
+# #      name: your_ADO_Project/your_repo          # PROJECT_NAME/REPOSITORY_NAME
+#       name: CMMI-TEST-PROJECT/CMMI-TEST-PROJECT
+#       ref: refs/heads/main
+
+
+# # Refering from Different Organization + Different Project + Different Repo:
+# resources:
+#   repositories:
+#     - repository: cmmiTemplates
+#       type: git
+#       name: OtherProject/TemplateRepo                 # PROJECT_NAME/REPOSITORY_NAME
+#       endpoint: OtherAzureDevOpsServiceConnection     # endpoint/service connection
+#       ref: refs/heads/main
+

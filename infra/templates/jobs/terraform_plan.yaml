@@ -1,0 +1,66 @@
+parameters:
+
+- name: jobName
+  type: string
+  default: terraform_plan
+
+- name: displayName
+  type: string
+  default: "Terraform Init and Plan"
+
+- name: workingDirectory
+  type: string
+
+- name: serviceConnection
+  type: string
+
+- name: backendResourceGroup
+  type: string
+
+- name: backendStorageAccount
+  type: string
+
+- name: backendContainer
+  type: string
+
+- name: backendStateFile
+  type: string
+
+
+jobs:
+- job: ${{ parameters.jobName }}
+  displayName: ${{ parameters.displayName }}
+  steps:
+  - checkout: self
+    displayName: "Checkout Repository"
+
+  - task: TerraformTask@5
+    displayName: "Terraform Init"
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: ${{ parameters.workingDirectory }}
+      backendServiceArm: ${{ parameters.serviceConnection }}
+      backendAzureRmResourceGroupName: ${{ parameters.backendResourceGroup }}
+      backendAzureRmStorageAccountName: ${{ parameters.backendStorageAccount }}
+      backendAzureRmContainerName: ${{ parameters.backendContainer }}
+      backendAzureRmKey: ${{ parameters.backendStateFile }}
+
+  - task: TerraformTask@5
+    displayName: "Terraform Plan"
+    inputs:
+      provider: 'azurerm'
+      command: 'plan'
+      workingDirectory: ${{ parameters.workingDirectory }}
+      environmentServiceNameAzureRM: ${{ parameters.serviceConnection }}
+      commandOptions: '-out=${{ parameters.workingDirectory }}/${{ parameters.backendStateFile }}.tfplan'
+    env:
+      TF_VAR_subscription_id: $(sub_id)
+
+
+  - task: PublishPipelineArtifact@1
+    displayName: "Upload Terraform Plan"
+    inputs:
+      targetPath: '${{ parameters.workingDirectory }}/${{ parameters.backendStateFile }}.tfplan'
+      artifact: 'terraform-plan'
+      publishLocation: 'pipeline'
