@@ -83,6 +83,7 @@ stages:
       backendContainer: '$(blob-container)'
       backendStateFile: '$(statefile)'
 
+
 - stage: infra_scanning
   dependsOn: tf_init_validate
   displayName: "Security Scanning"
@@ -128,5 +129,50 @@ stages:
       backendStorageAccount: '$(storage-account)'
       backendContainer: '$(blob-container)'
       backendStateFile: '$(statefile)'
- 
 
+
+- stage: infraValidation
+  # dependsOn: terraform_plan
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  displayName: "Infra-Validation"
+
+  jobs:
+    - job: infraValidation
+      displayName: "Infra-Validation"
+
+      steps:
+        - task: AzureCLI@2
+          displayName: "Validate AKS and ACR"
+          inputs:
+            azureSubscription: '$(service-connection)'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+
+              set -e
+
+              echo "========================================"
+              echo "Azure Account"
+              echo "========================================"
+
+              az account show
+
+              echo "========================================"
+              echo "Installing Python dependencies"
+              echo "========================================"
+
+              python -m pip install --upgrade pip
+              python -m pip install -r python/requirements.txt
+
+              echo "========================================"
+              echo "Running Infrastructure Validation"
+              echo "========================================"
+
+              python python/validate_aks_acr.py
+
+          env:
+            AZURE_SUBSCRIPTION_ID: $(AZURE_SUBSCRIPTION_ID)
+            AKS_NAME: $(AKS_NAME)
+            AKS_RESOURCE_GROUP: $(AKS_RESOURCE_GROUP)
+            ACR_NAME: $(ACR_NAME)
+            TEST_IMAGE: '$(ACR_NAME).azurecr.io/infra-test:v1'
